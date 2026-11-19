@@ -2,7 +2,7 @@
 
 Notion is the permanent memory. `Store` is the interface the rest of Ruby uses; the
 default `JsonStore` keeps working state on disk so Phase 1 runs without Notion.
-`NotionMirror` is the seam where Notion writes go (stubbed until the Notion phase).
+`ruby.notion.NotionMirror` writes to Notion; `NullMirror` is used when no token is set.
 Every write goes through a retry queue so nothing is silently dropped.
 """
 from __future__ import annotations
@@ -14,18 +14,20 @@ from .models import Item
 log = logging.getLogger("ruby.store")
 
 
-class NotionMirror:
-    """Replace the bodies with notion-client calls in the Notion phase."""
+class NullMirror:
+    """No-op mirror used when NOTION_TOKEN is not set (local dev, tests)."""
     def upsert(self, item: Item) -> Optional[str]:
-        return None  # return Notion page URL
-    def archive(self, item_id: str) -> None:
         return None
+    def archive(self, item: Item) -> None:
+        return None
+    def pull_open(self) -> list[Item]:
+        return []
 
 
 class JsonStore:
-    def __init__(self, path: str, mirror: Optional[NotionMirror] = None):
+    def __init__(self, path: str, mirror=None):
         self.path = path
-        self.mirror = mirror or NotionMirror()
+        self.mirror = mirror or NullMirror()
         self.items: dict[str, Item] = {}
         self.undo: dict[str, dict] = {}       # undo_id -> {"created": [ids], "expires": iso}
         self.retry_queue: list[str] = []      # item ids whose Notion write failed
@@ -70,12 +72,40 @@ class JsonStore:
         return item
 
     def remove(self, item_id: str):
-        self.items.pop(item_id, None)
+        item = self.items.pop(item_id, None)
+        self.retry_queue = [i for i in self.retry_queue if i != item_id]
         try:
-            self.mirror.archive(item_id)
+            if item:
+                self.mirror.archive(item)
         except Exception:
             log.exception("notion archive failed")
         self.save()
+
+    def sync_from_notion(self) -> int:
+        """Rebuild state from Notion (fresh volume / restart). Notion wins on conflicts:
+        its open rows are added if unknown, and local items whose Notion row is gone or closed
+        are left alone only if they are still waiting in the retry queue."""
+        try:
+            remote = self.mirror.pull_open()
+        except Exception:
+            log.exception("notion sync failed; continuing with local state")
+            return 0
+        known = {i.notion_url: i for i in self.items.values() if i.notion_url}
+        added = 0
+        for r in remote:
+            if r.notion_url in known:
+                local = known[r.notion_url]
+                local.title, local.due, local.prop = r.title, r.due, r.prop
+            else:
+                self.items[r.id] = r
+                added += 1
+        remote_urls = {r.notion_url for r in remote}
+        for i in list(self.items.values()):
+            if i.notion_url and i.notion_url not in remote_urls and i.id not in self.retry_queue \
+                    and i.status in ("Due", "In Progress"):
+                i.status = "Done"   # closed or archived in Notion
+        self.save()
+        return added
 
     def open_items(self) -> list[Item]:
         return [i for i in self.items.values() if i.status in ("Due", "In Progress")]

@@ -8,7 +8,8 @@ Design: [docs/slack-design.md](docs/slack-design.md).
 Built: Phase 1 (intent router, confirm/Edit/Cancel, Undo, channel setup, App Home) and Phase 2 core
 (7/11/2/4/5 beats, quiet-hours gate, Top 3 ranking, follow-up/star rule, Brain dump, Overwhelm reset,
 emoji + buttons, /dump /top3 /week /overwhelmed /quiet, #wins, edit-in-place channel cards).
-Stubbed: Notion writes (`ruby/store.py: NotionMirror`), Outlook, voice memos, DAR drafting, vendor drafts,
+Notion (Phase 1): Task Tracker mirror, retry queue, startup sync, Brain read (`ruby/notion.py`); database IDs in `ruby/notion_ids.json`. Other databases are created but not yet written to.
+Stubbed: Outlook, voice memos, DAR drafting, vendor drafts,
 stuck-unit and Friday recap content.
 
 ## Setup

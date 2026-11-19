@@ -6,6 +6,7 @@ from . import messages as M
 from .config import STATE_PATH
 from .core import Ruby
 from .store import JsonStore
+from .notion import NotionMirror
 
 log = logging.getLogger("ruby.app")
 
@@ -16,7 +17,9 @@ def build(bolt_token: str | None = None) -> tuple[App, Ruby]:
     if os.environ.get("ANTHROPIC_API_KEY"):
         import anthropic
         llm = anthropic.Anthropic()
-    ruby = Ruby(app.client, JsonStore(STATE_PATH), llm)
+    store = JsonStore(STATE_PATH, NotionMirror.from_env())
+    store.sync_from_notion()
+    ruby = Ruby(app.client, store, llm)
     register(app, ruby)
     return app, ruby
 

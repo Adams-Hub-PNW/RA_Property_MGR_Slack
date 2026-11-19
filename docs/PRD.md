@@ -67,7 +67,7 @@ Scheduled: beats per slack-design; reminders from due time + offset; daily overd
 | # | Phase | Scope | Status |
 |---|---|---|---|
 | 0 | Slack shell | Router, confirm/Undo, beats, quiet hours, Top 3, channels | **Done** |
-| 1 | Foundation | Create Notion workspace + all databases + Brain page; implement `NotionMirror` (upsert/archive/retry/startup sync); Claude API intent classification replacing keyword router | Next |
+| 1 | Foundation | Create Notion workspace + all databases + Brain page; implement `NotionMirror` (upsert/archive/retry/startup sync); Claude API intent classification replacing keyword router | **In progress**: 23 databases + Brain + Today created; Task Tracker mirror, retry, sync done; Claude intent router pending |
 | 2 | Daily engine | Recurring Tasks -> Task Tracker generator, real 7:00 content, reminders, overdue sweep, "done", add/change tasks | |
 | 3 | Make Ready + Vendors + Outlook | Board, Vendor Jobs, drafts, Graph auth, Approve-to-create, conflict check | |
 | 4 | Communication | Email Triage, Templates, Daily Notes -> 4:00 DAR in Roxy's voice | |

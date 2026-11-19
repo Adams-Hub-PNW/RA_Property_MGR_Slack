@@ -1,0 +1,33 @@
+{
+  "workspace": "Roxyadams",
+  "pages": {
+    "ruby_hq": "41d83c5f-f1e1-8158-85fb-fbde20a0cab7",
+    "brain": "41d83c5f-f1e1-819a-ba47-e5fce07792b8",
+    "today": "41d83c5f-f1e1-8143-bede-d49adb0b770f"
+  },
+  "data_sources": {
+    "properties": "41d83c5f-f1e1-81b2-83be-000bce3b936b",
+    "units": "41d83c5f-f1e1-8127-9131-000b785b8f67",
+    "make_ready": "41d83c5f-f1e1-81dc-ad66-000b0ce3b9e3",
+    "vendor_jobs": "41d83c5f-f1e1-8157-9fab-000b24ab4168",
+    "recurring_tasks": "41d83c5f-f1e1-8135-9250-000bb4c4d8c6",
+    "task_tracker": "41d83c5f-f1e1-8117-9f19-000b33f0cfef",
+    "todos": "41d83c5f-f1e1-815d-982e-000ba47d154b",
+    "move_ins": "41d83c5f-f1e1-81e0-8190-000b671b5674",
+    "move_outs": "41d83c5f-f1e1-81da-af01-000b7f3c5599",
+    "renewals": "41d83c5f-f1e1-81cf-8a8a-000b7d98694e",
+    "renewal_call_log": "41d83c5f-f1e1-81da-9d15-000b8092f108",
+    "delinquency": "41d83c5f-f1e1-811b-bbe9-000b68bab095",
+    "work_orders": "41d83c5f-f1e1-81fd-a36f-000bc3b7be2a",
+    "inspections": "41d83c5f-f1e1-81cf-ac9b-000be2eab11c",
+    "email_triage": "41d83c5f-f1e1-81be-9467-000b41b7d155",
+    "templates": "41d83c5f-f1e1-8183-9687-000ba3603890",
+    "daily_notes": "41d83c5f-f1e1-8192-9429-000bd49490f0",
+    "dars": "41d83c5f-f1e1-8123-81b3-000bb2a304c8",
+    "meetings": "41d83c5f-f1e1-81ef-862c-000b3c57b482",
+    "vendors": "41d83c5f-f1e1-81ea-b8d3-000ba86df52d",
+    "contacts": "41d83c5f-f1e1-815b-851d-000bfed2d42e",
+    "supply_list": "41d83c5f-f1e1-81ad-905d-000b39a2af77",
+    "leads": "41d83c5f-f1e1-81de-975f-000b8a1dba6d"
+  }
+}

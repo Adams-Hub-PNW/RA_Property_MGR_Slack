@@ -4,7 +4,7 @@ Local `quick_intent` handles the phrases that must always work even if Claude is
 `route` never raises: on any failure it returns an `unknown` result that asks Roxy what to do.
 """
 from __future__ import annotations
-import logging, re
+import json, logging, re
 from datetime import datetime
 from typing import Optional
 from .config import MODEL, OVERWHELM_PHRASES, TZ
@@ -151,10 +151,12 @@ def route(text: str, brain: str = "", client=None, recent: Optional[list[str]] =
     try:
         resp = client.messages.create(
             model=MODEL, max_tokens=900, system=system, tools=[TOOL],
-            tool_choice={"type": "tool", "name": "classify"},
-            messages=[{"role": "user", "content": f"{ctx}\n\nMessage:\n{text}"}])
-        block = next(b for b in resp.content if getattr(b, "type", None) == "tool_use")
-        return normalize(block.input)
+            messages=[{"role": "user", "content": f"{ctx}\n\nMessage:\n{text}\n\nCall the classify tool."}])
+        block = next((b for b in resp.content if getattr(b, "type", None) == "tool_use"), None)
+        if block is not None:
+            return normalize(block.input)
+        raw = "".join(getattr(b, "text", "") for b in resp.content)      # model answered in text: salvage JSON
+        return normalize(json.loads(raw[raw.index("{"): raw.rindex("}") + 1]))
     except Exception:
         log.exception("intent routing failed")
         return _unknown()

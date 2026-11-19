@@ -103,7 +103,7 @@ def filed(summary: str, undo_id: str) -> tuple[str, list]:
 
 
 def question(text: str, options: list[str], token: str) -> tuple[str, list]:
-    return text, [_sec(text), _actions(*[_btn(o, "answer", f"{token}|{o}") for o in options])]
+    return text, [_sec(text), _actions(*[_btn(o, f"answer_{n}", f"{token}|{o}") for n, o in enumerate(options)])]
 
 
 def draft(text: str, token: str) -> list[tuple[str, list]]:

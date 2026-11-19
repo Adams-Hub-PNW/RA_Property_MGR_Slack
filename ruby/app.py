@@ -1,6 +1,6 @@
 """Bolt wiring (Socket Mode)."""
 from __future__ import annotations
-import logging, os
+import logging, os, re
 from slack_bolt import App
 from . import messages as M
 from .config import STATE_PATH
@@ -76,7 +76,7 @@ def register(app: App, ruby: Ruby):
         if token in ruby.pending:
             ruby.pending[token]["title"] = view["state"]["values"]["t"]["v"]["value"]
             ruby.approve(token)
-    @app.action("answer")
+    @app.action(re.compile(r"^answer_\d+$"))
     def a_answer(ack, action):
         ack(); token, ans = action["value"].split("|", 1); ruby.clarify_answer(token, ans)
     @app.action("undo")

@@ -30,7 +30,7 @@ def test_forced_tool_call_with_brain_date_and_recent_context():
                     "prop": "HG", "unit": "c214", "work_needed": ["Paint", "Carpet", "Bogus"]})
     out = intent.route("C214 at Heritage Grove is vacant, needs paint and carpet",
                        brain="drafts only", client=c, recent=["hi"], now=NOW)
-    assert c.kw["tool_choice"] == {"type": "tool", "name": "classify"}
+    assert c.kw["tools"][0]["name"] == "classify" and "tool_choice" not in c.kw   # this model rejects forced tool_choice
     assert "drafts only" in c.kw["system"][1]["text"]
     assert "2026-11-19 14:05" in c.kw["messages"][0]["content"] and "- hi" in c.kw["messages"][0]["content"]
     assert out["unit"] == "C214" and out["work_needed"] == ["Paint", "Carpet"] and out["prop"] == "HG"
@@ -77,3 +77,16 @@ def test_replies_in_the_dm_it_came_from_even_if_user_id_is_wrong(tmp_path):
     r.use_dm_channel("D999")
     r.say("hello")
     assert sent[0]["channel"] == "D999"
+
+
+def test_text_answer_with_json_is_salvaged():
+    c = FakeClaude()
+    c.create = lambda **kw: NS(content=[NS(type="text", text='Sure: {"intent": "todo", "title": "x", "confidence": 0.8}')])
+    assert intent.route("do x", client=c)["intent"] == "todo"
+
+
+def test_question_buttons_have_unique_action_ids():
+    from ruby import messages as M
+    _, blocks = M.question("Which property?", ["Peak 88", "Heritage Grove", "Both"], "tok")
+    ids = [b["action_id"] for b in blocks[1]["elements"]]
+    assert len(ids) == len(set(ids))

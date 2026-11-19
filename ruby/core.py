@@ -1,6 +1,7 @@
 """Ruby's behavior, independent of Bolt wiring so it can be tested with a fake Slack client."""
 from __future__ import annotations
-import logging, uuid
+import logging, re, uuid, time
+from collections import deque
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -23,6 +24,8 @@ class Ruby:
         self.pending: dict[str, dict] = {}       # confirmation token -> proposal
         self._dm_channel: Optional[str] = store.state.get("last_dm_channel")
         self._channel_ids: dict[str, str] = {}
+        self.recent: deque = deque(maxlen=3)     # Roxy's last few messages, context only
+        self._brain: tuple[float, str] = (0.0, "")
 
     # ------------------------------------------------------------ plumbing
     def dm_channel(self) -> str:
@@ -44,6 +47,17 @@ class Ruby:
                 if not cursor:
                     break
         return self._channel_ids.get(name)
+
+    def brain(self, ttl: int = 900) -> str:
+        """Ruby's Brain page from Notion, cached; empty if Notion is unreachable."""
+        ts, text = self._brain
+        if time.time() - ts > ttl:
+            try:
+                text = self.store.mirror.read_brain()
+            except Exception:
+                log.exception("could not read Ruby's Brain; using last copy")
+            self._brain = (time.time(), text)
+        return text
 
     def say(self, text: str, blocks: Optional[list] = None, thread_ts: Optional[str] = None):
         """Reply in the DM. Replies to Roxy always go out, any hour."""
@@ -81,7 +95,8 @@ class Ruby:
 
     # ------------------------------------------------------------ incoming DM
     def handle_dm(self, text: str):
-        out = route(text, client=self.llm)
+        out = route(text, brain=self.brain(), client=self.llm, recent=list(self.recent))
+        self.recent.append(text[:200])
         intent = out.get("intent")
 
         if intent == "overwhelmed":
@@ -92,6 +107,11 @@ class Ruby:
             return self.quiet(out.get("minutes", 60))
         if intent == "query":
             return self.send_week() if out.get("title") == "week" else self.send_top3()
+        if intent == "task_done":
+            item = self.match_open_item(out.get("title") or text)
+            if item:
+                return self.say(f"{self.act(item.id, 'done')} [{item.prop}] {item.title}")
+            return self.say("I couldn't find that on your list. Which one did you finish?")
         if intent == "chitchat":
             return self.say(out.get("title") or "I'm here.")
         if out.get("question") and out.get("confidence", 1) < 0.6:
@@ -101,12 +121,30 @@ class Ruby:
             return self.say(t, b)
         return self.propose(out, text)
 
+    def match_open_item(self, phrase: str):
+        """Best open item whose title shares the most words with `phrase` (needs at least one)."""
+        words = {w for w in re.findall(r"[a-z0-9]+", phrase.lower()) if len(w) > 2}
+        best, score = None, 0
+        for it in self.store.open_items():
+            n = len(words & set(re.findall(r"[a-z0-9]+", it.title.lower())))
+            if n > score:
+                best, score = it, n
+        return best
+
     def propose(self, out: dict, original: str):
         token = uuid.uuid4().hex[:8]
         chan = CHANNEL_FOR_INTENT.get(out.get("intent"), None)
         prop = out.get("prop") or "Both"
         title = out.get("title") or original.strip()[:120]
         summary = f"I'll add this" + (f" to #{chan}" if chan else " to your list") + f":\n[{prop}] {title}"
+        facts = [f"{k}: {v}" for k, v in (
+            ("Unit", out.get("unit")), ("Resident", out.get("resident_first_name")), ("Vendor", out.get("vendor")),
+            ("Work", ", ".join(out.get("work_needed") or [])), ("Items", ", ".join(out.get("supply_items") or [])),
+            ("Status", out.get("renewal_status")), ("Due", out.get("due")),
+            ("Repeats", " ".join((out.get("recurrence") or {}).values())),
+            ("Email", (out.get("email") or {}).get("summary")), ("Details", out.get("details"))) if v]
+        if facts:
+            summary += "\n" + "\n".join(facts)
         if out.get("assumed"):
             summary += f"\nI assumed: {out['assumed']}"
         self.pending[token] = {"kind": "create", "out": out, "title": title, "prop": prop, "chan": chan}
@@ -129,7 +167,9 @@ class Ruby:
                 pass
         urgent = out.get("urgent")
         item = self.store.add(title=p["title"], prop=p["prop"], due=due,
-                              urgent_kind="marked_urgent" if urgent else None, source="slack_dm")
+                              urgent_kind="marked_urgent" if urgent else None, source="slack_dm",
+                              notes=out.get("details") or (out.get("email") or {}).get("summary"),
+                              intent=out.get("intent"))
         if p["chan"]:
             self.post_channel(p["chan"], f"[{item.prop}] {item.title}", item)
         self.log_audit(f"Created: [{item.prop}] {item.title}")

@@ -38,6 +38,8 @@ def _props(item: Item) -> dict:
         "Created by Ruby": {"checkbox": True},
         "Due date": {"date": {"start": item.due.isoformat()} if item.due else None},
     }
+    if item.notes:
+        p["Notes"] = {"rich_text": [{"text": {"content": item.notes[:2000]}}]}
     if item.source:
         p["Source"] = {"url": item.source}
     if item.status == "Done":

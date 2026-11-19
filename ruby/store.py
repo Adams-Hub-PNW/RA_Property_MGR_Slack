@@ -22,6 +22,8 @@ class NullMirror:
         return None
     def pull_open(self) -> list[Item]:
         return []
+    def read_brain(self) -> str:
+        return ""
 
 
 class JsonStore:

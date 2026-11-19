@@ -28,6 +28,8 @@ class Item:
     notion_url: Optional[str] = None
     raised: int = 0                     # times surfaced in check-ins (follow-up rule)
     source: Optional[str] = None
+    notes: Optional[str] = None         # specifics kept out of the title (terms, bid amounts)
+    intent: Optional[str] = None
 
     def to_dict(self):
         d = asdict(self)

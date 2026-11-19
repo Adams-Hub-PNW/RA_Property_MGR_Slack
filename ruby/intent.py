@@ -5,14 +5,14 @@ Local `quick_intent` handles the phrases that must always work even if Claude is
 """
 from __future__ import annotations
 import json, logging, re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from .config import MODEL, OVERWHELM_PHRASES, TZ
 
 log = logging.getLogger("ruby.intent")
 
 INTENTS = ["todo", "make_ready", "email_triage", "template_request", "renewal_call", "daily_note",
-           "task_done", "move_out", "move_in", "supply", "calendar_event", "recurring_task",
+           "task_done", "move_out", "pre_move_out", "move_in", "supply", "calendar_event", "recurring_task",
            "work_order", "lead", "reminder", "query", "brain_dump", "overwhelmed", "chitchat", "unknown"]
 PROPS = ("P88", "HG", "Both")
 WORK_NEEDED = ["Paint", "Carpet", "Cleaning", "Resurfacing", "Repairs", "Appliances", "Junk Haul",
@@ -33,6 +33,8 @@ Rules:
   A vendor/unit that needs work ("C214 is vacant, needs paint and carpet") is `make_ready`.
   A call, text or visit with a resident about renewing is `renewal_call`. Need-to-buy items are `supply`.
   Asking for a saved message ("applicant hasn't finished Two Dots") is `template_request`.
+  A resident giving notice / notice to vacate (NTV) is `pre_move_out`: set `notice_date` (date notice was given,
+  ISO date), `move_out_date` if stated, `unit`, `resident_first_name`. Do not compute the due date yourself.
   Appointments with a date/time are `calendar_event`. "Every Monday ..." style is `recurring_task`.
 - prop: P88, HG or Both. Infer from names, unit letters or context only when clear; otherwise null and ask ONE question.
 - Units look like a letter + 3 digits (C214, B105). Residents: first name only.
@@ -60,6 +62,8 @@ TOOL = {
             "options": {"type": "array", "items": {"type": "string"}},
             "details": {"type": ["string", "null"], "description": "Specifics kept out of the title"},
             "unit": {"type": ["string", "null"]},
+            "notice_date": {"type": ["string", "null"], "description": "ISO date the resident gave notice"},
+            "move_out_date": {"type": ["string", "null"], "description": "ISO date of intended move-out"},
             "resident_first_name": {"type": ["string", "null"]},
             "vendor": {"type": ["string", "null"]},
             "work_needed": {"type": "array", "items": {"type": "string", "enum": WORK_NEEDED}},
@@ -78,6 +82,21 @@ TOOL = {
 
 _UNIT = re.compile(r"^[A-Za-z]\s?-?\d{3}$")
 _DOLLARS = re.compile(r"\$\s?\d[\d,]*(?:\.\d+)?")
+
+
+PRE_MOVE_OUT_CHECKLIST = [
+    "Schedule the pre-move-out inspection (within 14 days of notice)",
+    "NTV form signed",
+    "NTV uploaded to Yardi CRM",
+    "Permission to enter noted (yes or no)",
+    "Inspection done in the HappyCo app",
+]
+
+
+def pre_move_out_due(notice_date: str) -> datetime:
+    """Policy: schedule within 14 days of notice given. Due end of that day, Pacific."""
+    d = datetime.fromisoformat(notice_date).date()
+    return datetime.combine(d, datetime.min.time(), tzinfo=TZ).replace(hour=17) + timedelta(days=14)
 
 
 def quick_intent(text: str) -> Optional[dict]:
@@ -119,6 +138,15 @@ def normalize(out: dict) -> dict:
     out["unit"] = re.sub(r"[\s-]", "", unit).upper() if unit and _UNIT.match(unit.strip()) else None
     out["work_needed"] = [w for w in (out.get("work_needed") or []) if w in WORK_NEEDED]
     out["options"] = [str(o) for o in (out.get("options") or [])][:4]
+    for k in ("notice_date", "move_out_date"):
+        try:
+            out[k] = datetime.fromisoformat(out[k]).date().isoformat() if out.get(k) else None
+        except ValueError:
+            out[k] = None
+    if out["intent"] == "pre_move_out" and out.get("notice_date"):
+        due = pre_move_out_due(out["notice_date"])
+        out["due"] = due.isoformat()
+        out["assumed"] = "Inspection due within 14 days of notice (" + due.strftime("%a %-m/%-d") + ")"
     if out.get("due"):
         try:
             datetime.fromisoformat(out["due"])

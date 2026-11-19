@@ -90,3 +90,33 @@ def test_question_buttons_have_unique_action_ids():
     _, blocks = M.question("Which property?", ["Peak 88", "Heritage Grove", "Both"], "tok")
     ids = [b["action_id"] for b in blocks[1]["elements"]]
     assert len(ids) == len(set(ids))
+
+
+def test_pre_move_out_due_is_14_days_after_notice_not_model_guess():
+    out = intent.normalize({"intent": "pre_move_out", "title": "C214 pre-move-out inspection", "confidence": 0.9,
+                            "notice_date": "2026-11-10", "due": "2026-11-25T17:00:00-08:00", "unit": "C214"})
+    assert out["due"].startswith("2026-11-24T17:00") and "14 days" in out["assumed"]
+
+
+def test_pre_move_out_checklist_shown_and_saved(tmp_path):
+    from ruby.core import Ruby
+    from ruby.store import JsonStore
+    calls, sent = [], []
+    class M:
+        def upsert(self, i): return None
+        def archive(self, i): pass
+        def pull_open(self): return []
+        def read_brain(self): return ""
+        def create_pre_move_out(self, out, source=None): calls.append(out)
+    slack = NS(chat_postMessage=lambda **k: sent.append(k) or {"ts": "1"},
+               conversations_open=lambda **k: {"channel": {"id": "D1"}},
+               conversations_list=lambda **k: {"channels": []})
+    payload = {"intent": "pre_move_out", "title": "C214 pre-move-out", "confidence": 0.95, "prop": "HG",
+               "unit": "C214", "notice_date": "2026-11-10"}
+    r = Ruby(slack, JsonStore(str(tmp_path / "s.json"), M()), FakeClaude(payload), roxy_id="U1")
+    r.handle_dm("C214 gave notice 11/10")
+    assert "NTV uploaded to Yardi CRM" in sent[0]["text"] and "HappyCo" in sent[0]["text"]
+    token = next(iter(r.pending))
+    r.approve(token)
+    assert calls and calls[0]["unit"] == "C214"
+    assert next(iter(r.store.items.values())).hard_deadline

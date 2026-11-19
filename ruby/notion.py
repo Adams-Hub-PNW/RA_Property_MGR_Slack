@@ -70,6 +70,30 @@ class NotionMirror:
                 properties=_props(item))
         return r.get("url")
 
+    def create_pre_move_out(self, out: dict, source: Optional[str] = None) -> Optional[str]:
+        """One checklist row per notice. Checkboxes start empty; permission starts as 'Not asked yet'."""
+        unit = out.get("unit") or ""
+        name = out.get("resident_first_name") or ""
+        props = {
+            "Pre-move-out": {"title": [{"text": {"content": f"{unit} {name} pre-move-out".strip()}}]},
+            "Unit #": {"rich_text": [{"text": {"content": unit}}]},
+            "Resident first name": {"rich_text": [{"text": {"content": name}}]},
+            "Permission to enter": {"select": {"name": "Not asked yet"}},
+            "Created by Ruby": {"checkbox": True},
+        }
+        if out.get("notice_date"):
+            props["Notice given date"] = {"date": {"start": out["notice_date"]}}
+        if out.get("move_out_date"):
+            props["Intended move-out date"] = {"date": {"start": out["move_out_date"]}}
+        if out.get("prop") in ("P88", "HG"):
+            props["Property"] = {"select": {"name": PROP_TO_NOTION[out["prop"]]}}
+        if source:
+            props["Source"] = {"url": source}
+        r = self.client.pages.create(
+            parent={"type": "data_source_id", "data_source_id": IDS["data_sources"]["pre_move_outs"]},
+            properties=props)
+        return r.get("url")
+
     def archive(self, item: Item) -> None:
         pid = page_id_from_url(item.notion_url)
         if pid:

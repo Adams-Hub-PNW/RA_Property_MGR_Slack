@@ -62,6 +62,17 @@ Slack behavior is as built (intent router, confirm/Edit/Cancel, Undo, emoji + bu
 
 Scheduled: beats per slack-design; reminders from due time + offset; daily overdue sweep; 7th = delinquency cycle; first business day = inspections; Mon/Thu 11:00 stuck units; Fri 5:00 weekly wins; day-before move-in gap reminder; daily work-order follow-up.
 
+## 5a. Pre-move-out inspections (added Nov 19 from Roxy)
+
+Triggered when a resident gives notice (NTV). Ruby computes **due = notice date + 14 days** (never trusts the model's date), marks it a hard deadline (ranks into Top 3), and creates a **Pre-Move-Outs** row with the checklist:
+1. Inspection scheduled within 14 days of notice
+2. NTV form signed
+3. NTV uploaded to Yardi CRM (Roxy does the entry; Ruby only reminds)
+4. Permission to enter noted: Yes / No / Not asked yet
+5. Inspection done in the HappyCo app (Ruby does not touch HappyCo)
+
+Open: what "IG" means in "Yardi CRM IG"; whether the pre-move-out becomes the Move-Outs row at move-out date.
+
 ## 6. Build phases
 
 | # | Phase | Scope | Status |

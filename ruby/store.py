@@ -24,6 +24,8 @@ class NullMirror:
         return []
     def read_brain(self) -> str:
         return ""
+    def create_pre_move_out(self, out: dict, source=None):
+        return None
 
 
 def _usable_path(path: str) -> str:

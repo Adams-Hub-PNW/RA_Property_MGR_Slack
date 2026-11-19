@@ -7,13 +7,13 @@ from typing import Optional
 
 from . import messages as M, quiet, followup, top3 as t3
 from .config import TZ, ROXY_USER_ID, OVERWHELM_PAUSE_MIN, REACTIONS, EMOJI_KEY
-from .intent import route
+from .intent import route, PRE_MOVE_OUT_CHECKLIST
 from .store import JsonStore
 
 log = logging.getLogger("ruby.core")
 
 CHANNEL_FOR_INTENT = {"make_ready": "make-ready-vendors", "email_triage": "inbox-emails",
-                      "renewal_call": "residents", "move_out": "residents", "move_in": "residents",
+                      "renewal_call": "residents", "move_out": "residents", "pre_move_out": "residents", "move_in": "residents",
                       "daily_note": "dar-notes", "task_done": "wins", "supply": "supplies",
                       "calendar_event": "make-ready-vendors"}
 
@@ -151,6 +151,8 @@ class Ruby:
             ("Email", (out.get("email") or {}).get("summary")), ("Details", out.get("details"))) if v]
         if facts:
             summary += "\n" + "\n".join(facts)
+        if out.get("intent") == "pre_move_out":
+            summary += "\nChecklist:\n" + "\n".join("☐ " + c for c in PRE_MOVE_OUT_CHECKLIST)
         if out.get("assumed"):
             summary += f"\nI assumed: {out['assumed']}"
         self.pending[token] = {"kind": "create", "out": out, "title": title, "prop": prop, "chan": chan}
@@ -176,11 +178,20 @@ class Ruby:
                               urgent_kind="marked_urgent" if urgent else None, source="slack_dm",
                               notes=out.get("details") or (out.get("email") or {}).get("summary"),
                               intent=out.get("intent"))
+        extra = ""
+        if out.get("intent") == "pre_move_out":
+            self.store.update(item.id, hard_deadline=True)
+            try:
+                self.store.mirror.create_pre_move_out({**out, "prop": item.prop}, source=None)
+                extra = "\nChecklist added to Pre-Move-Outs in Notion."
+            except Exception:
+                log.exception("pre-move-out checklist not saved to Notion")
+                extra = "\nThe Notion checklist didn't save yet. The task is saved."
         if p["chan"]:
             self.post_channel(p["chan"], f"[{item.prop}] {item.title}", item)
         self.log_audit(f"Created: [{item.prop}] {item.title}")
         undo = self.store.register_undo([item.id])
-        t, b = M.filed(f"Saved. [{item.prop}] {item.title}", undo)
+        t, b = M.filed(f"Saved. [{item.prop}] {item.title}{extra}", undo)
         return self.say(t, b)
 
     def cancel(self, token: str):

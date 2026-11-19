@@ -12,6 +12,8 @@ log = logging.getLogger("ruby.app")
 
 
 def build(bolt_token: str | None = None) -> tuple[App, Ruby]:
+    log.info("Starting Ruby: notion=%s claude=%s state=%s", bool(os.environ.get("NOTION_TOKEN")),
+             bool(os.environ.get("ANTHROPIC_API_KEY")), STATE_PATH)
     app = App(token=bolt_token or os.environ["SLACK_BOT_TOKEN"])
     llm = None
     if os.environ.get("ANTHROPIC_API_KEY"):
@@ -29,6 +31,8 @@ def register(app: App, ruby: Ruby):
     def on_message(event, say):
         if event.get("channel_type") == "im" and not event.get("bot_id") and not event.get("subtype"):
             ruby.roxy_id = ruby.roxy_id or event["user"]
+            ruby.use_dm_channel(event["channel"])   # reply where she wrote, whatever the env var says
+            log.info("DM received (%d chars)", len(event.get("text", "")))
             ruby.handle_dm(event.get("text", ""))
         elif event.get("channel_type") == "channel" and not event.get("bot_id") and not event.get("subtype"):
             app.client.chat_postMessage(channel=event["channel"], thread_ts=event["ts"],

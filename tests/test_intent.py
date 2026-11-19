@@ -65,3 +65,15 @@ def test_task_done_closes_matching_item_instead_of_creating(tmp_path):
     r = Ruby(slack, s, FakeClaude({"intent": "task_done", "title": "price sheets", "confidence": 0.95}), roxy_id="U1")
     r.handle_dm("done with price sheets")
     assert s.items[it.id].status == "Done" and len(s.items) == 1
+
+
+def test_replies_in_the_dm_it_came_from_even_if_user_id_is_wrong(tmp_path):
+    from ruby.core import Ruby
+    from ruby.store import JsonStore
+    sent = []
+    def bad_open(**k): raise RuntimeError("user_not_found")
+    slack = NS(chat_postMessage=lambda **k: sent.append(k) or {"ts": "1"}, conversations_open=bad_open)
+    r = Ruby(slack, JsonStore(str(tmp_path / "s.json")), None, roxy_id="WRONG")
+    r.use_dm_channel("D999")
+    r.say("hello")
+    assert sent[0]["channel"] == "D999"

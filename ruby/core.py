@@ -36,6 +36,12 @@ class Ruby:
             self.store.save()
         return self._dm_channel
 
+    def use_dm_channel(self, channel: str):
+        if channel and channel != self._dm_channel:
+            self._dm_channel = channel
+            self.store.state["last_dm_channel"] = channel
+            self.store.save()
+
     def channel_id(self, name: str) -> Optional[str]:
         if name not in self._channel_ids:
             cursor = None

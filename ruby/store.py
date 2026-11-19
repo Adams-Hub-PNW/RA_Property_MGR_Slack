@@ -26,9 +26,26 @@ class NullMirror:
         return ""
 
 
+def _usable_path(path: str) -> str:
+    """Create the state folder if needed; if it can't be written (e.g. no Railway volume at /data),
+    fall back to a local file so Ruby keeps working. State then resets on redeploy; Notion is the record."""
+    try:
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        probe = path + ".probe"
+        with open(probe, "w") as f:
+            f.write("ok")
+        os.remove(probe)
+        return path
+    except OSError:
+        fallback = os.path.join(os.getcwd(), os.path.basename(path))
+        log.warning("State path %s is not writable; using %s (resets on redeploy). Add a volume to keep it.",
+                    path, fallback)
+        return fallback
+
+
 class JsonStore:
     def __init__(self, path: str, mirror=None):
-        self.path = path
+        self.path = _usable_path(path)
         self.mirror = mirror or NullMirror()
         self.items: dict[str, Item] = {}
         self.undo: dict[str, dict] = {}       # undo_id -> {"created": [ids], "expires": iso}

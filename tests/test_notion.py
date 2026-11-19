@@ -95,3 +95,16 @@ def test_sync_closes_local_items_gone_from_notion(tmp_path):
     it = s.add(title="x")
     s.sync_from_notion()               # Notion returns no open rows
     assert s.items[it.id].status == "Done"
+
+
+def test_unwritable_state_path_falls_back_instead_of_crashing(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    s = JsonStore("/proc/definitely/not/writable/state.json")
+    s.add(title="still works")
+    assert (tmp_path / "state.json").exists()
+
+
+def test_missing_state_folder_is_created(tmp_path):
+    s = JsonStore(str(tmp_path / "data" / "state.json"))
+    s.add(title="x")
+    assert (tmp_path / "data" / "state.json").exists()

@@ -1,0 +1,30 @@
+display_information:
+  name: Ruby
+  description: Calm assistant for Roxy's property management work
+features:
+  app_home:
+    home_tab_enabled: true
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
+  bot_user:
+    display_name: Ruby
+    always_online: true
+  shortcuts:
+    - {name: Brain dump to Ruby, type: global, callback_id: brain_dump_global, description: Dump everything on your mind}
+    - {name: Send to Ruby, type: message, callback_id: send_to_ruby, description: Forward this message to Ruby}
+  slash_commands:
+    - {command: /dump, description: Brain dump, usage_hint: "[everything]", should_escape: false}
+    - {command: /top3, description: Show today's Top 3, should_escape: false}
+    - {command: /week, description: Show my week, should_escape: false}
+    - {command: /overwhelmed, description: Pause and show one next step, should_escape: false}
+    - {command: /quiet, description: Pause Ruby for N minutes, usage_hint: "60", should_escape: false}
+oauth_config:
+  scopes:
+    bot: [chat:write, im:history, im:read, im:write, channels:read, channels:join, channels:manage,
+          channels:history, reactions:read, reactions:write, files:read, pins:write, bookmarks:write,
+          commands, users:read]
+settings:
+  event_subscriptions:
+    bot_events: [message.im, message.channels, reaction_added, app_home_opened, file_shared]
+  interactivity: {is_enabled: true}
+  socket_mode_enabled: true

@@ -5,17 +5,14 @@ from collections import deque
 from datetime import datetime, timedelta
 from typing import Optional
 
-from . import messages as M, quiet, followup, top3 as t3
+from . import messages as M, quiet, followup, top3 as t3, handlers
 from .config import TZ, ROXY_USER_ID, OVERWHELM_PAUSE_MIN, REACTIONS, EMOJI_KEY
 from .intent import route, PRE_MOVE_OUT_CHECKLIST
 from .store import JsonStore
 
 log = logging.getLogger("ruby.core")
 
-CHANNEL_FOR_INTENT = {"make_ready": "make-ready-vendors", "email_triage": "inbox-emails",
-                      "renewal_call": "residents", "move_out": "residents", "pre_move_out": "residents", "move_in": "residents",
-                      "daily_note": "dar-notes", "task_done": "wins", "supply": "supplies",
-                      "calendar_event": "make-ready-vendors"}
+CHANNEL_FOR_INTENT = handlers.CHANNEL
 
 
 def call_reminder_time(now: datetime, limit: Optional[datetime] = None) -> datetime:
@@ -223,27 +220,35 @@ class Ruby:
                 due = datetime.fromisoformat(out["due"])
             except ValueError:
                 pass
-        urgent = out.get("urgent")
-        item = self.store.add(title=p["title"], prop=p["prop"], due=due,
-                              urgent_kind="marked_urgent" if urgent else None, source="slack_dm",
-                              notes=out.get("details") or (out.get("email") or {}).get("summary"),
-                              intent=out.get("intent"))
-        extra = ""
-        if out.get("intent") == "pre_move_out":
-            self.store.update(item.id, hard_deadline=True)
-            try:
-                self.store.mirror.create_pre_move_out({**out, "prop": item.prop}, source=None)
-                extra = "\nChecklist added to Pre-Move-Outs in Notion."
-            except Exception:
-                log.exception("pre-move-out checklist not saved to Notion")
-                extra = "\nThe Notion checklist didn't save yet. The task is saved."
-        if p["chan"]:
-            self.post_channel(p["chan"], f"[{item.prop}] {item.title}", item)
-        self.log_audit(f"Created: [{item.prop}] {item.title}")
-        undo = self.store.register_undo([item.id])
-        notion = ("\n✓ Saved to Notion (Task Tracker)." if item.notion_url
-                  else "\n⚠ Not in Notion yet. Saved here; I'll keep retrying.")
-        t, b = M.filed(f"Saved. [{item.prop}] {item.title}{extra}{notion}", undo)
+        intent = out.get("intent")
+        out = {**out, "prop": p["prop"], "title": p["title"]}
+        written = handlers.save(self.store.mirror, out)
+        lines, items, pages = [], [], [w.page_id for w in written if w.page_id]
+        make_task = intent not in handlers.HANDLERS or intent in handlers.TASK_TOO
+        if make_task:
+            item = self.store.add(title=p["title"], prop=p["prop"], due=due,
+                                  urgent_kind="marked_urgent" if out.get("urgent") else None, source="slack_dm",
+                                  notes=out.get("details") or (out.get("email") or {}).get("summary"), intent=intent,
+                                  hard_deadline=intent == "pre_move_out")
+            items.append(item)
+        for a in (out.get("email") or {}).get("action_items") or []:      # each email action becomes a reminder
+            items.append(self.store.add(title=str(a)[:120], prop=p["prop"], source="slack_dm", intent="todo"))
+        for w in written:
+            lines.append(f"✓ Saved to Notion: {w.label}" + (f" <{w.url}|Open>" if w.url and w.url.startswith("http") else "")
+                         if not w.error else f"⚠ Not saved to Notion: {w.label}. Tell me to try again.")
+        for it in items:
+            lines.append("✓ Saved to Notion: Task Tracker" if it.notion_url
+                         else f"⚠ Reminder '{it.title[:40]}' is saved here but not in Notion yet. I'll keep retrying.")
+        chan = p["chan"] or handlers.CHANNEL.get(intent)
+        if chan:
+            self.post_channel(chan, f"[{p['prop']}] {p['title']}", items[0] if items else None)
+        self.log_audit(f"Created ({intent}): [{p['prop']}] {p['title']}  " +
+                       ", ".join(w.label + (" ok" if not w.error else " FAILED") for w in written))
+        undo = self.store.register_undo([i.id for i in items], pages)
+        head = f"Saved. [{p['prop']}] {p['title']}"
+        if intent == "checklist" and out.get("checklist_items"):
+            head += "\n" + "\n".join("☐ " + c for c in out["checklist_items"])
+        t, b = M.filed(head + "\n" + "\n".join(lines), undo)
         return self.say(t, b)
 
     def cancel(self, token: str):

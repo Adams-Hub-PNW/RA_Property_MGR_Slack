@@ -107,7 +107,7 @@ def test_pre_move_out_checklist_shown_and_saved(tmp_path):
         def archive(self, i): pass
         def pull_open(self): return []
         def read_brain(self): return ""
-        def create_pre_move_out(self, out, source=None): calls.append(out)
+        def create_row(self, ds, props, children=None): calls.append((ds, props)); return {'id': 'p1', 'url': 'https://notion/p1'}
         def set_permission_to_enter(self, unit, value): return 'https://notion/x'
     slack = NS(chat_postMessage=lambda **k: sent.append(k) or {"ts": "1"},
                conversations_open=lambda **k: {"channel": {"id": "D1"}},
@@ -119,7 +119,7 @@ def test_pre_move_out_checklist_shown_and_saved(tmp_path):
     assert "NTV uploaded to Yardi CRM IQ" in sent[0]["text"] and "HappyCo" in sent[0]["text"]
     token = next(iter(r.pending))
     r.approve(token)
-    assert calls and calls[0]["unit"] == "C214"
+    assert calls and calls[0][0] == "move_outs" and calls[0][1]["Unit #"]["rich_text"][0]["text"]["content"] == "C214"
     assert next(iter(r.store.items.values())).hard_deadline
 
 

@@ -70,30 +70,43 @@ class NotionMirror:
                 properties=_props(item))
         return r.get("url")
 
-    def create_pre_move_out(self, out: dict, source: Optional[str] = None) -> Optional[str]:
-        """Pre-move-out is part of the Move-Outs checklist: one row per notice, created when notice is given.
-        Checkboxes start empty; permission starts as 'Not asked yet'. Ruby never ticks Yardi/HappyCo steps."""
-        unit = out.get("unit") or ""
-        name = out.get("resident_first_name") or ""
-        props = {
-            "Move-out": {"title": [{"text": {"content": f"{unit} {name} move-out".strip()}}]},
-            "Unit #": {"rich_text": [{"text": {"content": unit}}]},
-            "Resident first name": {"rich_text": [{"text": {"content": name}}]},
-            "Permission to enter": {"select": {"name": "Not asked yet"}},
-            "Created by Ruby": {"checkbox": True},
-        }
-        if out.get("notice_date"):
-            props["Notice given date"] = {"date": {"start": out["notice_date"]}}
-        if out.get("move_out_date"):
-            props["Move-out date"] = {"date": {"start": out["move_out_date"]}}
-        if out.get("prop") in ("P88", "HG"):
-            props["Property"] = {"select": {"name": PROP_TO_NOTION[out["prop"]]}}
-        if source:
-            props["Source"] = {"url": source}
-        r = self.client.pages.create(
-            parent={"type": "data_source_id", "data_source_id": IDS["data_sources"]["move_outs"]},
-            properties=props)
-        return r.get("url")
+    # ---- generic row operations used by ruby.handlers
+    def create_row(self, ds_key: str, props: dict, children: Optional[list] = None) -> dict:
+        kw = {"parent": {"type": "data_source_id", "data_source_id": IDS["data_sources"][ds_key]}, "properties": props}
+        if children:
+            kw["children"] = children
+        r = self.client.pages.create(**kw)
+        return {"id": r.get("id"), "url": r.get("url")}
+
+    def find_by_title(self, ds_key: str, title_prop: str, contains: str) -> Optional[dict]:
+        r = self.client.data_sources.query(
+            data_source_id=IDS["data_sources"][ds_key], page_size=1,
+            filter={"property": title_prop, "title": {"contains": contains}},
+            sorts=[{"timestamp": "created_time", "direction": "descending"}])
+        return r["results"][0] if r["results"] else None
+
+    def update_page(self, page_id: str, props: dict) -> Optional[str]:
+        return self.client.pages.update(page_id=page_id, properties=props).get("url")
+
+    def archive_page(self, page_id: str) -> None:
+        self.client.pages.update(page_id=page_id, archived=True)
+
+    def preflight(self) -> list[str]:
+        """Compare every column Ruby writes against the live workspace. Returns human-readable problems."""
+        from .handlers import SCHEMAS
+        problems = []
+        for key, cols in SCHEMAS.items():
+            try:
+                live = self.client.data_sources.retrieve(data_source_id=IDS["data_sources"][key])["properties"]
+            except Exception as e:
+                problems.append(f"{key}: cannot read database ({type(e).__name__}); is it shared with the integration?")
+                continue
+            for name, typ in cols.items():
+                if name not in live:
+                    problems.append(f"{key}: missing column '{name}'")
+                elif live[name]["type"] != typ:
+                    problems.append(f"{key}: column '{name}' is {live[name]['type']}, expected {typ}")
+        return problems
 
     def set_permission_to_enter(self, unit: str, value: str) -> Optional[str]:
         """Set Permission to enter (Yes / No) on the newest Move-Outs row for this unit.

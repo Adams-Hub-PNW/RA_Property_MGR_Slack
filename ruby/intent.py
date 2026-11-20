@@ -13,7 +13,7 @@ log = logging.getLogger("ruby.intent")
 
 INTENTS = ["todo", "make_ready", "email_triage", "template_request", "renewal_call", "daily_note",
            "task_done", "move_out", "pre_move_out", "permission_to_enter", "move_in", "supply", "calendar_event", "recurring_task",
-           "work_order", "lead", "reminder", "query", "brain_dump", "overwhelmed", "chitchat", "unknown"]
+           "work_order", "lead", "checklist", "reminder", "query", "brain_dump", "overwhelmed", "chitchat", "unknown"]
 PROPS = ("P88", "HG", "Both")
 WORK_NEEDED = ["Paint", "Carpet", "Cleaning", "Resurfacing", "Repairs", "Appliances", "Junk Haul",
                "Pest", "Flooring", "Blinds", "Other"]
@@ -21,6 +21,11 @@ CADENCES = ["Daily", "Weekly", "Monthly", "Quarterly", "Annual", "Per Event"]
 TOPICS = ["Leasing", "Maintenance", "Vendor", "Collections", "Corporate", "Reporting", "Resident",
           "Compliance", "Other"]
 URGENCY = ["Urgent", "Today", "This Week", "FYI"]
+NOTE_TYPES = ["Tour", "Prospect", "Resident", "Vendor", "Task", "Issue", "Other"]
+SUPPLY_FOR = ["Model Unit", "Office"]
+METHODS = ["Call", "Text", "Email", "In person"]
+OUTCOMES = ["Reached", "Voicemail", "No answer", "Counter", "Agreed", "Declined"]
+LEAD_SOURCES = ["Facebook Marketplace", "Walk-in", "Other"]
 RENEWAL_STATUS = ["Need to Call", "Contacted", "No Response", "Counter Offer", "Renewed/Signed", "Giving Notice"]
 
 SYSTEM = """You are Ruby, Roxy's calm, warm, matter-of-fact assistant. Roxy is the property manager of two
@@ -37,6 +42,12 @@ Rules:
   ISO date), `move_out_date` if stated, `unit`, `resident_first_name`. Do not compute the due date yourself.
   Roxy saying whether a resident allows entry for the pre-move-out ("C214 said yes, you can enter" / "no entry
   without a call first") is `permission_to_enter`: set `unit` and `permission` ("Yes" or "No").
+  "Make me a checklist for X" is `checklist`: `title` = X, `checklist_items` = the steps she listed, or 4-10 short
+  sensible steps for X if she did not. "Remind me to X (at/by T)" is `reminder` with `due`.
+  Work orders (WO numbers, "work order for ...") are `work_order` (`wo_number`, `issue`). A move-in with a date
+  is `move_in` (`move_in_date`). A prospect or applicant lead to track is `lead` (`lead_source`).
+  For `daily_note` set `note_type`; for `supply` set `supply_for` (Model Unit or Office) and `store` if said;
+  for `renewal_call` set `contact_method`, `call_outcome`, `renewal_status`, and put the terms in `details`.
   Appointments with a date/time are `calendar_event`. "Every Monday ..." style is `recurring_task`.
 - prop: P88, HG or Both. Infer from names, unit letters or context only when clear; otherwise null and ask ONE question.
 - Units look like a letter + 3 digits (C214, B105). Residents: first name only.
@@ -64,6 +75,16 @@ TOOL = {
             "options": {"type": "array", "items": {"type": "string"}},
             "details": {"type": ["string", "null"], "description": "Specifics kept out of the title"},
             "unit": {"type": ["string", "null"]},
+            "checklist_items": {"type": "array", "items": {"type": "string"}},
+            "note_type": {"type": ["string", "null"], "enum": [*NOTE_TYPES, None]},
+            "supply_for": {"type": ["string", "null"], "enum": [*SUPPLY_FOR, None]},
+            "store": {"type": ["string", "null"]},
+            "contact_method": {"type": ["string", "null"], "enum": [*METHODS, None]},
+            "call_outcome": {"type": ["string", "null"], "enum": [*OUTCOMES, None]},
+            "wo_number": {"type": ["string", "null"]},
+            "issue": {"type": ["string", "null"]},
+            "move_in_date": {"type": ["string", "null"]},
+            "lead_source": {"type": ["string", "null"], "enum": [*LEAD_SOURCES, None]},
             "permission": {"type": ["string", "null"], "enum": ["Yes", "No", None]},
             "notice_date": {"type": ["string", "null"], "description": "ISO date the resident gave notice"},
             "move_out_date": {"type": ["string", "null"], "description": "ISO date of intended move-out"},
@@ -150,6 +171,17 @@ def normalize(out: dict) -> dict:
         due = pre_move_out_due(out["notice_date"])
         out["due"] = due.isoformat()
         out["assumed"] = "Inspection due within 14 days of notice (" + due.strftime("%a %-m/%-d") + ")"
+    for k, allowed in (("note_type", NOTE_TYPES), ("supply_for", SUPPLY_FOR), ("contact_method", METHODS),
+                       ("call_outcome", OUTCOMES), ("lead_source", LEAD_SOURCES),
+                       ("renewal_status", RENEWAL_STATUS)):
+        if out.get(k) not in allowed:
+            out[k] = None
+    out["checklist_items"] = [str(i).strip()[:200] for i in (out.get("checklist_items") or []) if str(i).strip()][:15]
+    out["supply_items"] = [str(i).strip()[:120] for i in (out.get("supply_items") or []) if str(i).strip()][:20]
+    try:
+        out["move_in_date"] = datetime.fromisoformat(out["move_in_date"]).date().isoformat() if out.get("move_in_date") else None
+    except ValueError:
+        out["move_in_date"] = None
     if out.get("permission") not in ("Yes", "No"):
         out["permission"] = None
     if out.get("due"):

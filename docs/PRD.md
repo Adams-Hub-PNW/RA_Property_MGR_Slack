@@ -73,6 +73,28 @@ Triggered when a resident gives notice (NTV). Ruby computes **due = notice date 
 
 Pre-move-out is part of the Move-Outs checklist (same row; fields added to Move-Outs). If permission to enter = No, Ruby reminds Roxy to call the resident and agree a day and time.
 
+## 5b. What Ruby writes where (as built Nov 20)
+
+| Roxy says | Notion | Slack channel | Also a reminder? |
+|---|---|---|---|
+| a to-do / reminder | Task Tracker | none | yes |
+| "make me a checklist for X" | Checklists (page with to-do boxes) | none | yes |
+| a note (tour, prospect, issue) | Daily Notes (feeds the DAR) | #dar-notes | no |
+| supplies needed | Supply List (one row per item) | #supplies | no |
+| pasted email | Email Triage; each action item becomes a reminder | #inbox-emails | per action item |
+| renewal call | Renewals (found or created) + Renewal Call Log | #residents | no |
+| unit vacant / needs work | Make Ready card | #make-ready-vendors | yes |
+| move-out | Move-Outs checklist + Make Ready card | #residents | yes |
+| notice to vacate | Move-Outs checklist (pre-move-out steps) | #inspections | yes, hard deadline |
+| move-in | Move-Ins checklist | #residents | yes |
+| work order | Work Orders | #residents | yes |
+| weekly/monthly task | Recurring Tasks | none | no |
+| lead | Leads | #residents | no |
+
+Every approval ends with a line per write: "Saved to Notion: <database> (Open)" or "Not saved to Notion". Undo (24h) archives the Notion rows too. At startup Ruby checks every column she writes against the live workspace and logs mismatches ("Notion check: ...").
+
+Not yet: Recurring Tasks do not generate Task Tracker rows (Phase 2); calendar events are a reminder only until Outlook (Phase 3); vendor drafts, templates and DAR drafting are not built.
+
 ## 6. Build phases
 
 | # | Phase | Scope | Status |

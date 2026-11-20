@@ -21,6 +21,11 @@ def build(bolt_token: str | None = None) -> tuple[App, Ruby]:
         llm = anthropic.Anthropic()
     store = JsonStore(STATE_PATH, NotionMirror.from_env())
     store.sync_from_notion()
+    try:
+        for problem in store.mirror.preflight():
+            log.warning("Notion check: %s", problem)
+    except Exception:
+        log.exception("Notion check failed")
     ruby = Ruby(app.client, store, llm)
     register(app, ruby)
     return app, ruby

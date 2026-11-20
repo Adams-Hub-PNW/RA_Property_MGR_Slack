@@ -24,8 +24,16 @@ class NullMirror:
         return []
     def read_brain(self) -> str:
         return ""
-    def create_pre_move_out(self, out: dict, source=None):
+    def create_row(self, ds_key, props, children=None):
         return None
+    def find_by_title(self, ds_key, title_prop, contains):
+        return None
+    def update_page(self, page_id, props):
+        return None
+    def archive_page(self, page_id):
+        return None
+    def preflight(self) -> list:
+        return []
     def set_permission_to_enter(self, unit: str, value: str):
         return None
 
@@ -156,10 +164,10 @@ class JsonStore:
         return n
 
     # ---- undo (24h window)
-    def register_undo(self, created_ids: list[str]) -> str:
+    def register_undo(self, created_ids: list[str], pages: Optional[list[str]] = None) -> str:
         uid = uuid.uuid4().hex[:8]
         from datetime import timedelta
-        self.undo[uid] = {"created": created_ids,
+        self.undo[uid] = {"created": created_ids, "pages": pages or [],
                           "expires": (datetime.now() + timedelta(hours=24)).isoformat()}
         self.save()
         return uid
@@ -171,6 +179,11 @@ class JsonStore:
             return False
         for iid in rec["created"]:
             self.remove(iid)
+        for pid in rec.get("pages", []):
+            try:
+                self.mirror.archive_page(pid)
+            except Exception:
+                log.exception("could not archive Notion page %s", pid)
         return True
 
     # ---- pause / quiet

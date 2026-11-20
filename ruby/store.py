@@ -26,8 +26,8 @@ class NullMirror:
         return ""
     def create_pre_move_out(self, out: dict, source=None):
         return None
-    def set_permission_to_enter(self, unit: str, value: str) -> bool:
-        return False
+    def set_permission_to_enter(self, unit: str, value: str):
+        return None
 
 
 def _usable_path(path: str) -> str:

@@ -147,12 +147,20 @@ class Ruby:
         unit, perm = out.get("unit"), out.get("permission")
         if not unit or not perm:
             return self.say("Which unit, and is entry a yes or a no?")
-        saved = False
+        url, err = None, False
         try:
-            saved = self.store.mirror.set_permission_to_enter(unit, perm)
+            url = self.store.mirror.set_permission_to_enter(unit, perm)
         except Exception:
             log.exception("permission to enter not saved to Notion")
-        note = "" if saved else "\n(I couldn't update the Notion checklist for that unit yet.)"
+            err = True
+        if url:
+            link = f" <{url}|Open>" if url.startswith("http") else ""
+            note = f"\n✓ Saved to Notion: {unit} move-out checklist, Permission to enter = {perm}.{link}"
+        elif err:
+            note = f"\n⚠ Not saved to Notion yet: {unit} Permission to enter = {perm}. Notion didn't respond; please check the row."
+        else:
+            note = f"\n⚠ Not saved to Notion: I couldn't find a move-out checklist for {unit}. Send me the notice first."
+        self.log_audit(f"Permission to enter {unit} = {perm}: " + ("saved to Notion" if url else "NOT saved"))
         pmo = next((i for i in self.store.open_items()
                     if i.intent == "pre_move_out" and unit in i.title), None)
         if perm == "Yes":
@@ -233,7 +241,9 @@ class Ruby:
             self.post_channel(p["chan"], f"[{item.prop}] {item.title}", item)
         self.log_audit(f"Created: [{item.prop}] {item.title}")
         undo = self.store.register_undo([item.id])
-        t, b = M.filed(f"Saved. [{item.prop}] {item.title}{extra}", undo)
+        notion = ("\n✓ Saved to Notion (Task Tracker)." if item.notion_url
+                  else "\n⚠ Not in Notion yet. Saved here; I'll keep retrying.")
+        t, b = M.filed(f"Saved. [{item.prop}] {item.title}{extra}{notion}", undo)
         return self.say(t, b)
 
     def cancel(self, token: str):

@@ -95,17 +95,18 @@ class NotionMirror:
             properties=props)
         return r.get("url")
 
-    def set_permission_to_enter(self, unit: str, value: str) -> bool:
-        """Set Permission to enter (Yes / No) on the newest Move-Outs row for this unit. False if none found."""
+    def set_permission_to_enter(self, unit: str, value: str) -> Optional[str]:
+        """Set Permission to enter (Yes / No) on the newest Move-Outs row for this unit.
+        Returns the row's URL, or None if the unit has no Move-Outs row."""
         r = self.client.data_sources.query(
             data_source_id=IDS["data_sources"]["move_outs"], page_size=1,
             filter={"property": "Unit #", "rich_text": {"equals": unit}},
             sorts=[{"timestamp": "created_time", "direction": "descending"}])
         if not r["results"]:
-            return False
-        self.client.pages.update(page_id=r["results"][0]["id"],
-                                 properties={"Permission to enter": {"select": {"name": value}}})
-        return True
+            return None
+        row = self.client.pages.update(page_id=r["results"][0]["id"],
+                                       properties={"Permission to enter": {"select": {"name": value}}})
+        return row.get("url") or r["results"][0].get("url") or "saved"
 
     def archive(self, item: Item) -> None:
         pid = page_id_from_url(item.notion_url)

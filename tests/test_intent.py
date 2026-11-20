@@ -108,7 +108,7 @@ def test_pre_move_out_checklist_shown_and_saved(tmp_path):
         def pull_open(self): return []
         def read_brain(self): return ""
         def create_pre_move_out(self, out, source=None): calls.append(out)
-        def set_permission_to_enter(self, unit, value): return True
+        def set_permission_to_enter(self, unit, value): return 'https://notion/x'
     slack = NS(chat_postMessage=lambda **k: sent.append(k) or {"ts": "1"},
                conversations_open=lambda **k: {"channel": {"id": "D1"}},
                conversations_list=lambda **k: {"channels": []})
@@ -132,7 +132,7 @@ def test_permission_no_creates_call_reminder_before_inspection_deadline(tmp_path
         def archive(self, i): pass
         def pull_open(self): return []
         def read_brain(self): return ""
-        def set_permission_to_enter(self, unit, value): perms.append((unit, value)); return True
+        def set_permission_to_enter(self, unit, value): perms.append((unit, value)); return 'https://notion/row'
     slack = NS(chat_postMessage=lambda **k: sent.append(k) or {"ts": "1"},
                conversations_open=lambda **k: {"channel": {"id": "D1"}},
                conversations_list=lambda **k: {"channels": []})
@@ -143,6 +143,8 @@ def test_permission_no_creates_call_reminder_before_inspection_deadline(tmp_path
     assert perms == [("C214", "No")]
     call = [i for i in s.items.values() if i.title.startswith("Call C214")][0]
     assert call.due == datetime(2026, 11, 20, 16, 0, tzinfo=TZ) and call.prop == "HG"
+    txt = sent[-1]["text"]
+    assert "Saved to Notion" in txt and "Permission to enter = No" in txt and "https://notion/row" in txt
     # Friday after 3:30pm rolls to Monday 9am; never past the deadline
     assert call_reminder_time(datetime(2026, 11, 20, 16, 0, tzinfo=TZ)) == datetime(2026, 11, 23, 9, 0, tzinfo=TZ)
     assert call_reminder_time(datetime(2026, 11, 23, 16, 0, tzinfo=TZ), datetime(2026, 11, 24, 17, tzinfo=TZ)) == datetime(2026, 11, 24, 9, 0, tzinfo=TZ)
@@ -157,3 +159,21 @@ def test_permission_yes_only_records(tmp_path):
     s = JsonStore(str(tmp_path / "s.json"))
     Ruby(slack, s, None, roxy_id="U1").permission_to_enter({"unit": "C214", "permission": "Yes"})
     assert len(s.items) == 0 and "allows entry" in sent[0]["text"]
+
+
+def test_permission_reports_when_notion_did_not_save(tmp_path):
+    from ruby.core import Ruby
+    from ruby.store import JsonStore
+    sent = []
+    class Down:
+        def upsert(self, i): return None
+        def archive(self, i): pass
+        def pull_open(self): return []
+        def read_brain(self): return ""
+        def set_permission_to_enter(self, u, v): raise RuntimeError("down")
+    slack = NS(chat_postMessage=lambda **k: sent.append(k) or {"ts": "1"},
+               conversations_open=lambda **k: {"channel": {"id": "D1"}},
+               conversations_list=lambda **k: {"channels": []})
+    Ruby(slack, JsonStore(str(tmp_path / "s.json"), Down()), None, roxy_id="U1").permission_to_enter(
+        {"unit": "C214", "permission": "No"})
+    assert "Not saved to Notion yet" in sent[-1]["text"]

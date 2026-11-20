@@ -71,11 +71,12 @@ class NotionMirror:
         return r.get("url")
 
     def create_pre_move_out(self, out: dict, source: Optional[str] = None) -> Optional[str]:
-        """One checklist row per notice. Checkboxes start empty; permission starts as 'Not asked yet'."""
+        """Pre-move-out is part of the Move-Outs checklist: one row per notice, created when notice is given.
+        Checkboxes start empty; permission starts as 'Not asked yet'. Ruby never ticks Yardi/HappyCo steps."""
         unit = out.get("unit") or ""
         name = out.get("resident_first_name") or ""
         props = {
-            "Pre-move-out": {"title": [{"text": {"content": f"{unit} {name} pre-move-out".strip()}}]},
+            "Move-out": {"title": [{"text": {"content": f"{unit} {name} move-out".strip()}}]},
             "Unit #": {"rich_text": [{"text": {"content": unit}}]},
             "Resident first name": {"rich_text": [{"text": {"content": name}}]},
             "Permission to enter": {"select": {"name": "Not asked yet"}},
@@ -84,15 +85,27 @@ class NotionMirror:
         if out.get("notice_date"):
             props["Notice given date"] = {"date": {"start": out["notice_date"]}}
         if out.get("move_out_date"):
-            props["Intended move-out date"] = {"date": {"start": out["move_out_date"]}}
+            props["Move-out date"] = {"date": {"start": out["move_out_date"]}}
         if out.get("prop") in ("P88", "HG"):
             props["Property"] = {"select": {"name": PROP_TO_NOTION[out["prop"]]}}
         if source:
             props["Source"] = {"url": source}
         r = self.client.pages.create(
-            parent={"type": "data_source_id", "data_source_id": IDS["data_sources"]["pre_move_outs"]},
+            parent={"type": "data_source_id", "data_source_id": IDS["data_sources"]["move_outs"]},
             properties=props)
         return r.get("url")
+
+    def set_permission_to_enter(self, unit: str, value: str) -> bool:
+        """Set Permission to enter (Yes / No) on the newest Move-Outs row for this unit. False if none found."""
+        r = self.client.data_sources.query(
+            data_source_id=IDS["data_sources"]["move_outs"], page_size=1,
+            filter={"property": "Unit #", "rich_text": {"equals": unit}},
+            sorts=[{"timestamp": "created_time", "direction": "descending"}])
+        if not r["results"]:
+            return False
+        self.client.pages.update(page_id=r["results"][0]["id"],
+                                 properties={"Permission to enter": {"select": {"name": value}}})
+        return True
 
     def archive(self, item: Item) -> None:
         pid = page_id_from_url(item.notion_url)

@@ -18,6 +18,20 @@ CHANNEL_FOR_INTENT = {"make_ready": "make-ready-vendors", "email_triage": "inbox
                       "calendar_event": "make-ready-vendors"}
 
 
+def call_reminder_time(now: datetime, limit: Optional[datetime] = None) -> datetime:
+    """Today 4:00 PM if it's a weekday before 3:30 PM, otherwise the next business day 9:00 AM; never after `limit`."""
+    cand = now.replace(hour=16, minute=0, second=0, microsecond=0)
+    if now.weekday() >= 5 or now.hour * 60 + now.minute >= 15 * 60 + 30:
+        cand = (now + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+        while cand.weekday() >= 5:
+            cand += timedelta(days=1)
+    if limit is not None:
+        lim = limit if limit.tzinfo else limit.replace(tzinfo=cand.tzinfo)
+        if cand > lim:
+            cand = lim.replace(hour=9, minute=0)
+    return cand
+
+
 class Ruby:
     def __init__(self, slack, store: JsonStore, llm=None, roxy_id: str = ROXY_USER_ID):
         self.slack, self.store, self.llm, self.roxy_id = slack, store, llm, roxy_id
@@ -113,6 +127,8 @@ class Ruby:
             return self.quiet(out.get("minutes", 60))
         if intent == "query":
             return self.send_week() if out.get("title") == "week" else self.send_top3()
+        if intent == "permission_to_enter":
+            return self.permission_to_enter(out)
         if intent == "task_done":
             item = self.match_open_item(out.get("title") or text)
             if item:
@@ -126,6 +142,32 @@ class Ruby:
             t, b = M.question(out["question"], out.get("options") or ["Save as to-do", "Cancel"], token)
             return self.say(t, b)
         return self.propose(out, text)
+
+    def permission_to_enter(self, out: dict, now: Optional[datetime] = None):
+        unit, perm = out.get("unit"), out.get("permission")
+        if not unit or not perm:
+            return self.say("Which unit, and is entry a yes or a no?")
+        saved = False
+        try:
+            saved = self.store.mirror.set_permission_to_enter(unit, perm)
+        except Exception:
+            log.exception("permission to enter not saved to Notion")
+        note = "" if saved else "\n(I couldn't update the Notion checklist for that unit yet.)"
+        pmo = next((i for i in self.store.open_items()
+                    if i.intent == "pre_move_out" and unit in i.title), None)
+        if perm == "Yes":
+            nxt = f" Next: schedule the inspection by {pmo.due:%a %-m/%-d}." if pmo and pmo.due else ""
+            return self.say(f"Noted: {unit} allows entry.{nxt}{note}")
+        now = now or datetime.now(TZ)
+        due = call_reminder_time(now, pmo.due if pmo else None)
+        item = self.store.add(title=f"Call {unit} resident to set a day and time for the pre-move-out inspection",
+                              prop=(pmo.prop if pmo else out.get("prop") or "Both"), due=due, hard_deadline=True,
+                              source="slack_dm", intent="todo")
+        self.post_channel("residents", f"[{item.prop}] {item.title}", item)
+        self.log_audit(f"Created: [{item.prop}] {item.title}")
+        t, b = M.filed(f"Noted: {unit} needs a call first. I added a reminder for "
+                       f"{due:%a %-m/%-d %-I:%M %p}.{note}", self.store.register_undo([item.id]))
+        return self.say(t, b)
 
     def match_open_item(self, phrase: str):
         """Best open item whose title shares the most words with `phrase` (needs at least one)."""

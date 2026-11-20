@@ -108,6 +108,7 @@ def test_pre_move_out_checklist_shown_and_saved(tmp_path):
         def pull_open(self): return []
         def read_brain(self): return ""
         def create_pre_move_out(self, out, source=None): calls.append(out)
+        def set_permission_to_enter(self, unit, value): return True
     slack = NS(chat_postMessage=lambda **k: sent.append(k) or {"ts": "1"},
                conversations_open=lambda **k: {"channel": {"id": "D1"}},
                conversations_list=lambda **k: {"channels": []})
@@ -115,8 +116,44 @@ def test_pre_move_out_checklist_shown_and_saved(tmp_path):
                "unit": "C214", "notice_date": "2026-11-10"}
     r = Ruby(slack, JsonStore(str(tmp_path / "s.json"), M()), FakeClaude(payload), roxy_id="U1")
     r.handle_dm("C214 gave notice 11/10")
-    assert "NTV uploaded to Yardi CRM" in sent[0]["text"] and "HappyCo" in sent[0]["text"]
+    assert "NTV uploaded to Yardi CRM IQ" in sent[0]["text"] and "HappyCo" in sent[0]["text"]
     token = next(iter(r.pending))
     r.approve(token)
     assert calls and calls[0]["unit"] == "C214"
     assert next(iter(r.store.items.values())).hard_deadline
+
+
+def test_permission_no_creates_call_reminder_before_inspection_deadline(tmp_path):
+    from ruby.core import Ruby, call_reminder_time
+    from ruby.store import JsonStore
+    sent, perms = [], []
+    class M:
+        def upsert(self, i): return None
+        def archive(self, i): pass
+        def pull_open(self): return []
+        def read_brain(self): return ""
+        def set_permission_to_enter(self, unit, value): perms.append((unit, value)); return True
+    slack = NS(chat_postMessage=lambda **k: sent.append(k) or {"ts": "1"},
+               conversations_open=lambda **k: {"channel": {"id": "D1"}},
+               conversations_list=lambda **k: {"channels": []})
+    s = JsonStore(str(tmp_path / "s.json"), M())
+    s.add(title="C214 pre-move-out", prop="HG", intent="pre_move_out", due=datetime(2026, 11, 24, 17, tzinfo=TZ))
+    r = Ruby(slack, s, None, roxy_id="U1")
+    r.permission_to_enter({"unit": "C214", "permission": "No"}, now=datetime(2026, 11, 20, 10, 0, tzinfo=TZ))
+    assert perms == [("C214", "No")]
+    call = [i for i in s.items.values() if i.title.startswith("Call C214")][0]
+    assert call.due == datetime(2026, 11, 20, 16, 0, tzinfo=TZ) and call.prop == "HG"
+    # Friday after 3:30pm rolls to Monday 9am; never past the deadline
+    assert call_reminder_time(datetime(2026, 11, 20, 16, 0, tzinfo=TZ)) == datetime(2026, 11, 23, 9, 0, tzinfo=TZ)
+    assert call_reminder_time(datetime(2026, 11, 23, 16, 0, tzinfo=TZ), datetime(2026, 11, 24, 17, tzinfo=TZ)) == datetime(2026, 11, 24, 9, 0, tzinfo=TZ)
+
+
+def test_permission_yes_only_records(tmp_path):
+    from ruby.core import Ruby
+    from ruby.store import JsonStore
+    sent = []
+    slack = NS(chat_postMessage=lambda **k: sent.append(k) or {"ts": "1"},
+               conversations_open=lambda **k: {"channel": {"id": "D1"}})
+    s = JsonStore(str(tmp_path / "s.json"))
+    Ruby(slack, s, None, roxy_id="U1").permission_to_enter({"unit": "C214", "permission": "Yes"})
+    assert len(s.items) == 0 and "allows entry" in sent[0]["text"]

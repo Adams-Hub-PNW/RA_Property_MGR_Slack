@@ -12,7 +12,7 @@ from .config import MODEL, OVERWHELM_PHRASES, TZ
 log = logging.getLogger("ruby.intent")
 
 INTENTS = ["todo", "make_ready", "email_triage", "template_request", "renewal_call", "daily_note",
-           "task_done", "move_out", "pre_move_out", "move_in", "supply", "calendar_event", "recurring_task",
+           "task_done", "move_out", "pre_move_out", "permission_to_enter", "move_in", "supply", "calendar_event", "recurring_task",
            "work_order", "lead", "reminder", "query", "brain_dump", "overwhelmed", "chitchat", "unknown"]
 PROPS = ("P88", "HG", "Both")
 WORK_NEEDED = ["Paint", "Carpet", "Cleaning", "Resurfacing", "Repairs", "Appliances", "Junk Haul",
@@ -35,6 +35,8 @@ Rules:
   Asking for a saved message ("applicant hasn't finished Two Dots") is `template_request`.
   A resident giving notice / notice to vacate (NTV) is `pre_move_out`: set `notice_date` (date notice was given,
   ISO date), `move_out_date` if stated, `unit`, `resident_first_name`. Do not compute the due date yourself.
+  Roxy saying whether a resident allows entry for the pre-move-out ("C214 said yes, you can enter" / "no entry
+  without a call first") is `permission_to_enter`: set `unit` and `permission` ("Yes" or "No").
   Appointments with a date/time are `calendar_event`. "Every Monday ..." style is `recurring_task`.
 - prop: P88, HG or Both. Infer from names, unit letters or context only when clear; otherwise null and ask ONE question.
 - Units look like a letter + 3 digits (C214, B105). Residents: first name only.
@@ -62,6 +64,7 @@ TOOL = {
             "options": {"type": "array", "items": {"type": "string"}},
             "details": {"type": ["string", "null"], "description": "Specifics kept out of the title"},
             "unit": {"type": ["string", "null"]},
+            "permission": {"type": ["string", "null"], "enum": ["Yes", "No", None]},
             "notice_date": {"type": ["string", "null"], "description": "ISO date the resident gave notice"},
             "move_out_date": {"type": ["string", "null"], "description": "ISO date of intended move-out"},
             "resident_first_name": {"type": ["string", "null"]},
@@ -87,7 +90,7 @@ _DOLLARS = re.compile(r"\$\s?\d[\d,]*(?:\.\d+)?")
 PRE_MOVE_OUT_CHECKLIST = [
     "Schedule the pre-move-out inspection (within 14 days of notice)",
     "NTV form signed",
-    "NTV uploaded to Yardi CRM",
+    "NTV uploaded to Yardi CRM IQ",
     "Permission to enter noted (yes or no)",
     "Inspection done in the HappyCo app",
 ]
@@ -147,6 +150,8 @@ def normalize(out: dict) -> dict:
         due = pre_move_out_due(out["notice_date"])
         out["due"] = due.isoformat()
         out["assumed"] = "Inspection due within 14 days of notice (" + due.strftime("%a %-m/%-d") + ")"
+    if out.get("permission") not in ("Yes", "No"):
+        out["permission"] = None
     if out.get("due"):
         try:
             datetime.fromisoformat(out["due"])
